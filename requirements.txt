@@ -1,0 +1,19 @@
+# Dependências do PyTorch (Instalação OBRIGATÓRIA antes de Ultralytics)
+torch==2.2.0+cpu
+torchvision==0.17.0+cpu
+
+# Para garantir a instalação do PyTorch CPU-only
+# Esta linha DEVE ser usada no comando de instalação (pip install -r requirements.txt --extra-index-url ...)
+# Ela é mantida aqui apenas para referência e instrução.
+# --extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- Visão Computacional e Core ---
+ultralytics==8.3.2
+streamlit==1.38.0
+streamlit-webrtc==0.47.7
+opencv-python-headless==4.10.0.84
+av==12.3.0
+
+# --- Dependências Padrão (Manter versões estáveis) ---
+numpy==1.26.4
+pillow==10.4.0
