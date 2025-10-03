@@ -5,4 +5,4 @@ streamlit>=1.38.0
 streamlit-webrtc>=0.47.7
 opencv-python-headless>=4.10.0.84
 numpy>=1.26.4
-pillow>=10.4.0bnm,
+pillow>=10.4.0bnm
