@@ -1,4 +1,3 @@
-# Use == for exact versions or >= for minimum versions consistently
 torch>=2.8.0
 torchvision>=0.19.0
 ultralytics>=8.2.0

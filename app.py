@@ -160,8 +160,10 @@ class ObjectCounterTransformer(VideoTransformerBase):
             y_offset = 30
             for obj_type, count in sorted(self.counter.items()):
                 text = f"{obj_type}: {count}"
+                
+                # 🚨 CORREÇÃO DE EXIBIÇÃO: Usamos cor e espessura robustas
                 cv2.putText(img, text, (10, y_offset), 
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2) # Cor VERMELHA (BGR)
                 y_offset += 30
 
         except Exception as e:
@@ -205,14 +207,19 @@ if source_option == "Webcam (Live Stream)":
         key="object-counter",
         mode=WebRtcMode.SENDRECV,
         rtc_configuration=rtc_config,
+        
+        # 🚨 ALTERAÇÃO CHAVE AQUI: Restrições de Mídia
         media_stream_constraints={
             "video": {
+                # Tenta forçar a resolução padrão (bom equilíbrio)
                 "width": {"ideal": 640},
                 "height": {"ideal": 480},
-                "frameRate": {"ideal": 30}
+                # Tenta forçar 30 FPS.
+                "frameRate": {"ideal": 30} 
             }, 
             "audio": False
         },
+        
         video_processor_factory=lambda: ObjectCounterTransformer(yolo_model=yolo_model),
         async_processing=True,
     )
