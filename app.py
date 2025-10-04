@@ -10,6 +10,7 @@ import tempfile
 import time
 import torch
 from ultralytics.nn.tasks import DetectionModel 
+from torch.nn.modules.container import Sequential
 
 # Configuração do Streamlit
 st.set_page_config(page_title="Contador de Objetos", layout="wide")
@@ -70,23 +71,36 @@ if mode.startswith("YOLO"):
         @st.cache_resource(show_spinner="Carregando Modelo YOLO...")
         def load_model(path):
             try:
-                # Tentativa segura de carregamento
+                # Primeira tentativa: carregamento normal
+                st.info("🔄 Tentando carregamento normal...")
                 return YOLO(path)
             except Exception as e:
-                st.error(f"❌ Erro no carregamento direto: {e}")
+                st.warning(f"⚠️ Carregamento normal falhou: {e}")
                 st.info("🔄 Tentando carregar com safe_globals...")
                 try:
-                    with torch.serialization.safe_globals([DetectionModel]):
-                        return YOLO(path)
+                    # Segunda tentativa: com safe_globals para ambas as classes
+                    with torch.serialization.safe_globals([DetectionModel, Sequential]):
+                        model = YOLO(path)
+                        st.success("✅ Modelo carregado com safe_globals!")
+                        return model
                 except Exception as e2:
                     st.error(f"❌ Erro também com safe_globals: {e2}")
-                    st.stop()
+                    st.info("🔄 Tentando método alternativo...")
+                    try:
+                        # Terceira tentativa: carregamento direto com torch.load
+                        weights = torch.load(path, weights_only=False)
+                        model = YOLO(path)
+                        st.success("✅ Modelo carregado com método alternativo!")
+                        return model
+                    except Exception as e3:
+                        st.error(f"❌ Todas as tentativas falharam: {e3}")
+                        st.stop()
         
         yolo_model = load_model(model_path)
         st.sidebar.success(f"✅ Modelo {selected_model_file} carregado!")
 
     except Exception as e:
-        st.error(f"❌ Erro ao carregar o modelo: {e}")
+        st.error(f"❌ Erro crítico ao carregar o modelo: {e}")
         st.stop()
 
 # ---------- Lógica Hough (Clássico) ----------
@@ -359,26 +373,24 @@ else:
         st.info("📁 Por favor, carregue um arquivo na barra lateral para iniciar o processamento.")
 
 # =========================================================================
-# === INSTRUÇÕES DE USO ===
+# === SOLUÇÃO ALTERNATIVA SE AINDA NÃO FUNCIONAR ===
 # =========================================================================
 st.markdown("---")
+st.markdown("### 🔧 Se o modelo ainda não carregar:")
+
+st.code("""
+# Solução alternativa manual no terminal:
+pip install torch==2.5.1 --force-reinstall
+""")
+
 st.markdown("""
 ### 🎯 **Instruções de Uso:**
 
 **🔴 Webcam:**
 - Clique em **START** para iniciar a câmera
-- **IMPORTANTE**: Após ajustar a **Confiança** ou **IoU NMS**, clique em **STOP** e depois em **START** novamente.
-
-**📁 Arquivos:**
-- **Imagens**: Suporta PNG, JPG, JPEG
-- **Vídeos**: Suporta MP4, AVI, MOV
+- **IMPORTANTE**: Após ajustar parâmetros, clique em **STOP** e depois **START**
 
 **⚙️ Configurações YOLO:**
-- **Confiança mínima**: Ajuste para filtrar detecções (valores mais altos = menos falsos positivos)
-- **IoU NMS**: **Reduza este valor** (ex: para **0.30** ou **0.15**) para contar objetos que estão tocando ou empilhados.
-- **Máximo de detecções**: Aumente para cenas com muitos objetos
-
-**🎨 Visualização:**
-- **Desenhar anotações**: Mostra caixas delimitadoras e labels
-- **Mostrar FPS**: Exibe frames por segundo
+- **IoU NMS**: **Reduza para 0.15-0.30** para objetos empilhados
+- **Confiança**: Ajuste conforme necessidade
 """)
