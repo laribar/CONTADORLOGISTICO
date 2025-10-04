@@ -1,4 +1,8 @@
 ffmpeg
+pkg-config
 libavformat-dev
 libavcodec-dev
-pkg-config
+libavdevice-dev  # NEW: For avdevice
+libavfilter-dev  # NEW: For avfilter
+libswscale-dev   # NEW: For swscale
+libswresample-dev # NEW: For swresample
