@@ -7,10 +7,15 @@ from collections import Counter
 from ultralytics import YOLO
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode, RTCConfiguration
 import tempfile
+import time # Adicionado para garantir o FPS
 
 # Configuração do Streamlit
 st.set_page_config(page_title="Contador de Objetos", layout="wide")
 st.title("📷 Contador de Objetos — Streamlit com YOLOv8")
+
+# --- Variáveis de Estado para o WebRTC ---
+# Se o estado do slider mudar, o Streamlit roda o script novamente.
+# Vamos armazenar os valores de modo que o webrtc_streamer possa ser recriado com novos valores.
 
 # --- Verificação e Carregamento de Modelos ---
 MODEL_DIR = "models"
@@ -37,6 +42,10 @@ elif source_option == "Carregar Vídeo Local":
 
 
 # ---------- Lógica YOLO (Deep Learning) ----------
+conf_thres = 0.4 # Default
+iou_thres = 0.5  # Default
+max_det = 300    # Default
+
 if mode.startswith("YOLO"):
     try:
         if not os.path.exists(MODEL_DIR):
@@ -52,9 +61,10 @@ if mode.startswith("YOLO"):
         selected_model_file = st.sidebar.selectbox("Escolher Modelo YOLO", model_files)
         model_path = os.path.join(MODEL_DIR, selected_model_file)
 
-        conf_thres = st.sidebar.slider("Confiança mínima", 0.1, 0.9, 0.4, 0.05)
-        iou_thres = st.sidebar.slider("IoU NMS", 0.1, 0.9, 0.5, 0.05)
-        max_det = st.sidebar.slider("Máximo de detecções", 50, 1000, 300, 10)
+        # Atualizando os sliders (agora com chaves/keys para forçar a atualização)
+        conf_thres = st.sidebar.slider("Confiança mínima", 0.1, 0.9, 0.4, 0.05, key="conf_slider")
+        iou_thres = st.sidebar.slider("IoU NMS", 0.1, 0.9, 0.5, 0.05, key="iou_slider")
+        max_det = st.sidebar.slider("Máximo de detecções", 50, 1000, 300, 10, key="maxdet_slider")
 
         @st.cache_resource(show_spinner="Carregando Modelo YOLO...")
         def load_model(path):
@@ -76,6 +86,7 @@ else:
     minR = st.sidebar.slider("Raio mínimo", 0, 200, 12, 1)
     maxR = st.sidebar.slider("Raio máximo", 0, 400, 60, 1)
 
+
 # ---------- Configuração WebRTC Simplificada ----------
 rtc_config = RTCConfiguration({
     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
@@ -83,11 +94,14 @@ rtc_config = RTCConfiguration({
 
 
 # =========================================================================
-# === CLASSE TRANSFORMER CORRIGIDA ===
+# === CLASSE TRANSFORMER (Lógica de Processamento) ===
 # =========================================================================
 class ObjectCounterTransformer(VideoTransformerBase):
-    def __init__(self, yolo_model=None):
+    def __init__(self, yolo_model=None, conf_thres=0.4, iou_thres=0.5, max_det=300): # Parâmetros adicionados
         self.yolo_model = yolo_model
+        self.conf_thres = conf_thres # Armazena o valor do slider
+        self.iou_thres = iou_thres   # Armazena o valor do slider
+        self.max_det = max_det       # Armazena o valor do slider
         self.counter = Counter()
         self.fps_hist = []
         self.prev_time = cv2.getTickCount() / cv2.getTickFrequency()
@@ -105,18 +119,17 @@ class ObjectCounterTransformer(VideoTransformerBase):
         if img is None or img.size == 0:
             return np.zeros((480, 640, 3), dtype=np.uint8)
 
-        height, width = img.shape[:2]
         self.counter = Counter()
 
         try:
             if mode.startswith("YOLO") and self.yolo_model is not None:
-                # Processamento YOLO
+                # Processamento YOLO (AGORA USANDO self.VARIAVEL)
                 results = self.yolo_model.predict(
                     source=img,
-                    conf=conf_thres,
-                    iou=iou_thres,
+                    conf=self.conf_thres, # Lendo o valor armazenado no __init__
+                    iou=self.iou_thres,   # Lendo o valor armazenado no __init__
                     verbose=False,
-                    max_det=max_det
+                    max_det=self.max_det
                 )
                 
                 detections = results[0]
@@ -131,45 +144,25 @@ class ObjectCounterTransformer(VideoTransformerBase):
                         self.counter[class_name] += 1
                         
                         if draw_boxes:
+                            # Desenha caixa (Cor Verde)
                             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            # Desenha nome (Cor Verde)
                             cv2.putText(img, class_name, (x1, max(10, y1-6)), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             
-            else:
-                # Processamento Hough Circles
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                gray = cv2.medianBlur(gray, 9)
-                
-                circles = cv2.HoughCircles(
-                    gray, cv2.HOUGH_GRADIENT, 
-                    dp=dp, minDist=minDist,
-                    param1=canny, param2=acc_thr,
-                    minRadius=minR, maxRadius=maxR
-                )
-                
-                if circles is not None:
-                    circles = np.uint16(np.around(circles[0, :]))
-                    self.counter["circulos"] = len(circles)
-                    
-                    if draw_boxes:
-                        for (x, y, r) in circles:
-                            cv2.circle(img, (x, y), r, (0, 255, 0), 2)
-                            cv2.circle(img, (x, y), 2, (0, 0, 255), 3)
-
-            # Exibir contadores na imagem
+            # --- Exibir Contadores (HUD) ---
             y_offset = 30
             for obj_type, count in sorted(self.counter.items()):
                 text = f"{obj_type}: {count}"
-                
-                # 🚨 CORREÇÃO DE EXIBIÇÃO: Usamos cor e espessura robustas
+                # Desenha o texto da contagem (Cor Vermelha para garantir visibilidade)
                 cv2.putText(img, text, (10, y_offset), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2) # Cor VERMELHA (BGR)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                 y_offset += 30
 
         except Exception as e:
-            error_text = f"Erro: {str(e)}"
+            error_text = f"Erro no YOLO: {str(e)}"
             cv2.putText(img, error_text, (10, 30), 
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
         return img
     
@@ -184,15 +177,15 @@ class ObjectCounterTransformer(VideoTransformerBase):
             if show_fps:
                 fps = self._update_fps()
                 cv2.putText(processed_img, f"FPS: {fps:.1f}", 
-                          (img.shape[1] - 120, 30), 
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                            (img.shape[1] - 120, 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
             
             return processed_img
             
         except Exception as e:
             error_img = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(error_img, f"Erro: {str(e)}", (10, 30), 
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            cv2.putText(error_img, f"Erro no Transform: {str(e)}", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             return error_img
 
 
@@ -201,29 +194,29 @@ class ObjectCounterTransformer(VideoTransformerBase):
 # =========================================================================
 
 if source_option == "Webcam (Live Stream)":
-    st.info("🔴 **Webcam ao Vivo** - Clique em 'START' para iniciar a câmera")
+    st.info("🔴 **Webcam ao Vivo** - Clique em 'START' para iniciar a câmera. **ATENÇÃO: Após ajustar os sliders, clique em STOP e START novamente!**")
     
     webrtc_ctx = webrtc_streamer(
         key="object-counter",
         mode=WebRtcMode.SENDRECV,
         rtc_configuration=rtc_config,
         
-        # 🚨 ALTERAÇÃO CHAVE AQUI: Restrições de Mídia
         media_stream_constraints={
             "video": {
-                # 🚨 ALTERAÇÃO CHAVE AQUI: Tenta forçar 720p
-                "width": {"ideal": 1280, "min": 640},  # Pede 1280, mas aceita 640
-                "height": {"ideal": 720, "min": 480}, # Pede 720, mas aceita 480
-                
-                # O FPS IDEAL PODE SER O CAUSADOR DO DESFOQUE.
-                # Se 30 FPS for muito para o processamento, o navegador pode reduzir a qualidade.
-                # Tente um valor menor (20) ou remova a restrição de frameRate.
+                "width": {"ideal": 1280, "min": 640}, 
+                "height": {"ideal": 720, "min": 480},
                 "frameRate": {"ideal": 20} 
             }, 
             "audio": False
         },
         
-        video_processor_factory=lambda: ObjectCounterTransformer(yolo_model=yolo_model),
+        # 🚨 PASSANDO PARÂMETROS ATUAIS PARA A FÁBRICA
+        video_processor_factory=lambda: ObjectCounterTransformer(
+            yolo_model=yolo_model,
+            conf_thres=conf_thres, # Valor atual do slider
+            iou_thres=iou_thres,   # Valor atual do slider
+            max_det=max_det        # Valor atual do slider
+        ),
         async_processing=True,
     )
     
@@ -238,21 +231,29 @@ elif uploaded_file is not None:
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             
-            if img is not None:
-                transformer = ObjectCounterTransformer(yolo_model=yolo_model)
-                processed_img = transformer.process_frame(img)
-                
-                st.image(processed_img, channels="BGR", 
-                        caption="🔍 Resultado da Detecção", 
-                        use_column_width=True)
-                
-                if transformer.counter:
-                    count_text = " | ".join([f"**{k}**: {v}" for k, v in transformer.counter.items()])
-                    st.success(f"📊 **Contagem Total:** {count_text}")
-                else:
-                    st.warning("⚠️ Nenhum objeto detectado")
+            # 🚨 CORREÇÃO ROBUSTA DE ERRO DE IMAGEM
+            if img is None or not isinstance(img, np.ndarray) or img.size == 0:
+                 st.error("❌ Erro: O OpenCV não conseguiu ler a imagem. Tente salvar o arquivo em outro formato (ex: PNG) ou use uma imagem diferente.")
+                 # O return aqui evita o erro NoneType no processamento
+                 st.stop()
+            
+            transformer = ObjectCounterTransformer(
+                yolo_model=yolo_model, 
+                conf_thres=conf_thres, 
+                iou_thres=iou_thres,
+                max_det=max_det
+            )
+            processed_img = transformer.process_frame(img)
+            
+            st.image(processed_img, channels="BGR", 
+                     caption="🔍 Resultado da Detecção", 
+                     use_column_width=True)
+            
+            if transformer.counter:
+                count_text = " | ".join([f"**{k}**: {v}" for k, v in transformer.counter.items()])
+                st.success(f"📊 **Contagem Total:** {count_text}")
             else:
-                st.error("❌ Erro: Não foi possível carregar a imagem")
+                st.warning("⚠️ Nenhum objeto detectado")
                 
         except Exception as e:
             st.error(f"❌ Erro ao processar imagem: {str(e)}")
@@ -264,7 +265,7 @@ elif uploaded_file is not None:
             tfile.flush()
             
             cap = cv2.VideoCapture(tfile.name)
-            transformer = ObjectCounterTransformer(yolo_model=yolo_model)
+            transformer = ObjectCounterTransformer(yolo_model=yolo_model, conf_thres=conf_thres, iou_thres=iou_thres, max_det=max_det)
             
             stframe = st.empty()
             stop_processing = st.button("⏹️ Parar Processamento")
@@ -279,13 +280,14 @@ elif uploaded_file is not None:
                     
                     processed_frame = transformer.process_frame(frame)
                     stframe.image(processed_frame, channels="BGR", 
-                                use_column_width=True)
+                                  use_column_width=True)
                     
                     # Atualizar contagem
                     if transformer.counter:
                         count_text = " | ".join([f"**{k}**: {v}" for k, v in transformer.counter.items()])
-                        st.info(f"📊 **Contagem Atual:** {count_text}")
-                
+                        # Mostra a contagem fora da imagem no modo vídeo
+                        st.info(f"📊 **Contagem Atual:** {count_text}") 
+                    
                 cap.release()
                 
                 if not stop_processing:
@@ -318,19 +320,8 @@ st.markdown("""
 
 **🔴 Webcam:**
 - Clique em **START** para iniciar a câmera
-- Aguarde alguns segundos para a inicialização
-- Verifique as permissões do navegador se a câmera não aparecer
-
-**🖼️ Imagem:**
-- Carregue uma imagem PNG/JPG
-- A detecção será processada automaticamente
-
-**🎥 Vídeo:**
-- Carregue um vídeo MP4/AVI/MOV
-- Use o botão **Parar Processamento** para interromper
+- **IMPORTANTE**: Após ajustar a **Confiança** ou **IoU NMS**, clique em **STOP** e depois em **START** novamente. Isso recria a conexão da câmera com os novos parâmetros.
 
 **⚙️ Configurações:**
-- **YOLO**: Use modelos pré-treinados para detecção precisa
-- **Hough**: Ideal para objetos circulares simples
-- Ajuste os parâmetros conforme necessário
+- **IoU NMS**: **Reduza este valor** (ex: para **0.30** ou **0.15**) para contar objetos que estão tocando ou empilhados.
 """)
