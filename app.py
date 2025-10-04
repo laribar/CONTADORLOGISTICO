@@ -212,10 +212,10 @@ if source_option == "Webcam (Live Stream)":
         media_stream_constraints={
             "video": {
                 # Tenta forçar a resolução padrão (bom equilíbrio)
-                "width": {"ideal": 640},
-                "height": {"ideal": 480},
+                "width": {"ideal": 1280},
+                "height": {"ideal": 720},
                 # Tenta forçar 30 FPS.
-                "frameRate": {"ideal": 30} 
+                "frameRate": {"ideal": 60} 
             }, 
             "audio": False
         },
