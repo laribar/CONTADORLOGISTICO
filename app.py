@@ -8,7 +8,8 @@ from ultralytics import YOLO
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode, RTCConfiguration
 import tempfile
 import time # Adicionado para garantir o FPS
-
+import torch
+from ultralytics.nn.tasks import DetectionModel 
 # Configuração do Streamlit
 st.set_page_config(page_title="Contador de Objetos", layout="wide")
 st.title("📷 Contador de Objetos — Streamlit com YOLOv8")
@@ -68,10 +69,11 @@ if mode.startswith("YOLO"):
 
         @st.cache_resource(show_spinner="Carregando Modelo YOLO...")
         def load_model(path):
-            return YOLO(path)
-
+            # Envolve a chamada YOLO com o gerenciador de contexto de segurança do PyTorch
+            with torch.serialization.safe_globals([DetectionModel]):
+                return YOLO(path)
+        
         yolo_model = load_model(model_path)
-        st.sidebar.success(f"Modelo {selected_model_file} carregado com sucesso!")
 
     except Exception as e:
         st.error(f"❌ Erro ao carregar o modelo: {e}")
