@@ -2,7 +2,7 @@ ffmpeg
 pkg-config
 libavformat-dev
 libavcodec-dev
-libavdevice-dev  # NEW: For avdevice
-libavfilter-dev  # NEW: For avfilter
-libswscale-dev   # NEW: For swscale
-libswresample-dev # NEW: For swresample
+libavdevice-dev
+libavfilter-dev
+libswscale-dev
+libswresample-dev
