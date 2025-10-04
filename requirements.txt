@@ -3,5 +3,5 @@ opencv-python==4.10.0.84
 pillow==10.4.0
 ultralytics==8.2.0
 requests==2.31.0
-av  # <--- ADICIONE ESTA LINHA
-streamlit-webrtc # <-- É bom garantir que esta dependência essencial também está listada
+av==12.1.0  # Versão fixada
+streamlit-webrtc==0.45.0 # Versão fixada
