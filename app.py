@@ -211,11 +211,14 @@ if source_option == "Webcam (Live Stream)":
         # 🚨 ALTERAÇÃO CHAVE AQUI: Restrições de Mídia
         media_stream_constraints={
             "video": {
-                # Tenta forçar a resolução padrão (bom equilíbrio)
-                "width": {"ideal": 1280},
-                "height": {"ideal": 720},
-                # Tenta forçar 30 FPS.
-                "frameRate": {"ideal": 60} 
+                # 🚨 ALTERAÇÃO CHAVE AQUI: Tenta forçar 720p
+                "width": {"ideal": 1280, "min": 640},  # Pede 1280, mas aceita 640
+                "height": {"ideal": 720, "min": 480}, # Pede 720, mas aceita 480
+                
+                # O FPS IDEAL PODE SER O CAUSADOR DO DESFOQUE.
+                # Se 30 FPS for muito para o processamento, o navegador pode reduzir a qualidade.
+                # Tente um valor menor (20) ou remova a restrição de frameRate.
+                "frameRate": {"ideal": 20} 
             }, 
             "audio": False
         },
