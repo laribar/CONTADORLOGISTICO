@@ -1,2 +1,4 @@
 ffmpeg
-apt-utils
+pkg-config
+libavformat-dev
+libavcodec-dev
